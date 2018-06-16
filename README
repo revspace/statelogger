@@ -1,0 +1,14 @@
+https://revspace.nl/Spacestategeschiedenis
+
+
+This executable will create /var/statelog if it doesn't exist, or expand it to
+contain the state for the current minute.
+
+When run several times in the same minute, the state is overwritten with the
+current value.
+
+A "minute" is defined as a 60-second period since the start_time as defined in
+the header of the file, and will probably not be aligned with the MM in
+HH:MM:SS.
+
+
