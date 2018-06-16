@@ -1,14 +1,41 @@
-https://revspace.nl/Spacestategeschiedenis
-
+DESCRIPTION
 
 This executable will create /var/statelog if it doesn't exist, or expand it to
-contain the state for the current minute.
+contain the state for the current minute. The current state is determined by
+checking whether the file /tmp/space-is-open exists; if it does not exist, the
+space is considered closed. The contents of the file are ignored.
 
-When run several times in the same minute, the state is overwritten with the
-current value.
+The file /tmp/space-is-open on 'gateway' is administered by one of the scripts
+in /home/spaceloop/revspace_dicht.d/ and revspace_open.d/ and is considered
+more canonical than the retained value in the mqtt topic "revspace/state".
+
+
+FILE FORMAT
+
+(Copied from https://revspace.nl/Spacestategeschiedenis)
+
+    First 8 bytes (64 bit): unix time_t epoch time of first data point
+
+    Subsequent data: one byte per minute,
+        byte offset = 8 + floor((time() - $start_time) / 60)
+
+        ASCII '0': space was closed (or mostly closed)
+        ASCII '1': space was open (or mostly open)
+        ASCII '?': script did run but could not determine space state (not
+                   currently in use)
+        ASCII '\0' (NUL): space state was not recorded
+        Any other value: treat as '?'
+
+
+CAVEATS
+
+If it's executed multiple times within the same time slot, the state is
+overwritten with the current value.
 
 A "minute" is defined as a 60-second period since the start_time as defined in
 the header of the file, and will probably not be aligned with the MM in
-HH:MM:SS.
-
-
+HH:MM:SS. When used with cron(1), this will probably result in some data being
+skipped because two subsequent runs fall in the same time slot. In the worst
+case, half of the samples will be invalid, which is still considered good
+enough for the purpose of this project. (Originally, we considered 10 samples
+per hour, now we have 60, or in the worst case, 30.)
