@@ -23,7 +23,7 @@ open my $fh, "< :raw", $fn;
 read($fh, my $start_time, $header_length) == $header_length or die "short read";
 
 $start_time = unpack "q", $start_time;
-printf "Logging since %s.\n", scalar localtime $start_time;
+printf "Logging since %s.\n", strftime "%Y-%m-%d %H:%M:%S", localtime $start_time;
 my $now = time();
 my $offset = 8;
 
