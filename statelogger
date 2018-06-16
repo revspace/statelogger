@@ -16,7 +16,16 @@ open my $fh, "+< :raw", $fn;
 read($fh, my $start_time, $header_length) == $header_length or die "short read";
 
 $start_time = unpack "q", $start_time;
-my $offset = $header_length + int((time() - $start_time) / 60);
+my $now = time();
+
+$now >= $start_time or die sprintf(
+    "FATAL: start time of %s is in the future (start_time = %s, now = %s)",
+    $fn,
+    scalar localtime $start_time,
+    scalar localtime $now,
+);
+
+my $offset = $header_length + int(($now - $start_time) / 60);
 
 my $min_file_length = $offset + 1;
 truncate $fh, $min_file_length if -s $fh < $min_file_length;
