@@ -1,0 +1,29 @@
+#!/usr/bin/perl -w
+use strict;
+use autodie;
+use Fcntl qw(SEEK_SET);
+
+my $fn = "/var/statelog";
+my $header_length = 8;
+
+if (not -e $fn) {
+    open my $fh, "> :raw", $fn;
+    print $fh pack "q", time;
+    close $fh;
+}
+
+open my $fh, "+< :raw", $fn;
+read($fh, my $start_time, $header_length) == $header_length or die "short read";
+
+$start_time = unpack "q", $start_time;
+my $offset = $header_length + int((time() - $start_time) / 60);
+
+my $min_file_length = $offset + 1;
+truncate $fh, $min_file_length if -s $fh < $min_file_length;
+
+seek $fh, $offset, SEEK_SET;
+
+my $state = -e "/tmp/space-is-open" ? "1" : "0";
+print $fh $state;
+
+close $fh;
