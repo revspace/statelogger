@@ -1,0 +1,74 @@
+#!/usr/bin/perl -w
+use strict;
+use autodie;
+use Fcntl qw(SEEK_SET);
+use POSIX qw(strftime);
+use Getopt::Long;
+
+my $usage = "Usage: $0 [--all] [--unknown=ignore|open|closed|past|future]\n";
+
+GetOptions(
+    "all"       => \my $all,
+    "unknown=s" => \(my $unknown_mode = "ignore"),
+) or die $usage;
+
+die $usage if @ARGV;
+
+my $edges = !$all;
+
+my $fn = "/var/statelog";
+my $header_length = 8;
+
+open my $fh, "< :raw", $fn;
+read($fh, my $start_time, $header_length) == $header_length or die "short read";
+
+$start_time = unpack "q", $start_time;
+printf "Logging since %s.\n", scalar localtime $start_time;
+my $now = time();
+my $offset = 8;
+
+$/ = \1;  # make readline() read one 1 byte at a time.
+
+my $callback = sub {
+    my ($time, $value) = @_;
+    printf(
+        "%s %s\n",
+        strftime("%Y-%m-%d %H:%M", localtime $time),
+        $value ? "open" : "closed",
+    );
+};
+
+my $last_known = undef;
+while (defined (my $value = readline $fh)) {
+    my $count = 1;
+
+    if ($value !~ /[01]/) {
+        if ($unknown_mode eq 'ignore') {
+            $value = undef;
+        } elsif ($unknown_mode eq 'open') {
+            $value = 1;
+        } elsif ($unknown_mode eq 'closed') {
+            $value = 0;
+        } elsif ($unknown_mode eq 'past') {
+            $value = $last_known;
+        } elsif ($unknown_mode eq 'future') {
+            LOOKAHEAD: while (defined ($value = readline $fh)) {
+                $count++;
+                last LOOKAHEAD if $value =~ /[01]/;
+            }
+        } else {
+            die "Unsupported mode '$unknown_mode'";
+        }
+    }
+
+    if (defined $value) {
+        for (1..$count) {
+            if (not $edges or not(defined $last_known) or !$value != !$last_known) {
+                my $time = $start_time + ($offset - $header_length) * 60;
+                $callback->($time, $value)
+            }
+            $last_known = $value;
+        }
+    }
+    $offset++;
+}
