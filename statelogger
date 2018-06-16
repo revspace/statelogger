@@ -26,13 +26,20 @@ $now >= $start_time or die sprintf(
 );
 
 my $offset = $header_length + int(($now - $start_time) / 60);
+my $current = -e "/tmp/space-is-open" ? "1" : "0";
 
 my $min_file_length = $offset + 1;
-truncate $fh, $min_file_length if -s $fh < $min_file_length;
+if (-s $fh < $min_file_length) {
+    truncate $fh, $min_file_length;
+} else {
+    seek $fh, $offset, SEEK_SET;
+    read $fh, my $old, 1;
+    exit 0 if $old eq $current;  # Nothing to do
+
+    warn "Writing over existing data (was $old, now $current)"
+        if $old ne "\0" and $old ne "?";
+}
 
 seek $fh, $offset, SEEK_SET;
-
-my $state = -e "/tmp/space-is-open" ? "1" : "0";
-print $fh $state;
-
+print $fh $current;
 close $fh;
