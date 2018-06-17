@@ -20,11 +20,8 @@ die $usage if $hex and not $heatmap;
 die $usage if @ARGV;
 
 if ($heatmap and not defined $hex) {
-    eval {
-        require Term::ReadKey;
-        my ($columns) = Term::ReadKey::GetTerminalSize();
-        $hex = $columns < 102;
-    }
+    my ($rows, $columns) = split " ", `stty size 2>/dev/null`;
+    $hex = $columns < 102 if $columns;
 }
 
 my $edges = $heatmap ? 0 : !$all;
