@@ -2,19 +2,32 @@
 use strict;
 use autodie;
 use Fcntl qw(SEEK_SET);
-use POSIX qw(strftime);
+use POSIX qw(strftime round);
 use Getopt::Long;
 
-my $usage = "Usage: $0 [--all] [--unknown=ignore|open|closed|past|future]\n";
+my $usage = "Usage: $0 [--all|--heatmap [--[no]hex]] [--unknown=ignore|open|closed|past|future]\n";
 
 GetOptions(
     "all"       => \my $all,
+    "days=i"    => \my $days,
+    "heatmap"   => \my $heatmap,
+    "hex"       => \my $hex,
     "unknown=s" => \(my $unknown_mode = "ignore"),
 ) or die $usage;
 
+die $usage if $all and $heatmap;
+die $usage if $hex and not $heatmap;
 die $usage if @ARGV;
 
-my $edges = !$all;
+if ($heatmap and not defined $hex) {
+    eval {
+        require Term::ReadKey;
+        my ($columns) = Term::ReadKey::GetTerminalSize();
+        $hex = $columns < 102;
+    }
+}
+
+my $edges = $heatmap ? 0 : !$all;
 
 my $fn = "/var/statelog";
 my $header_length = 8;
@@ -23,9 +36,16 @@ open my $fh, "< :raw", $fn;
 read($fh, my $start_time, $header_length) == $header_length or die "short read";
 
 $start_time = unpack "q", $start_time;
-printf "Logging since %s.\n", strftime "%Y-%m-%d %H:%M:%S", localtime $start_time;
 my $now = time();
 my $offset = 8;
+
+if ($days) {
+    my $first_time = time() - $days * 86400;
+    die sprintf "Only %d days available.\n", int((time() - $start_time) / 86400)
+        if $first_time < $start_time;
+    $offset += int(($first_time - $start_time) / 60);
+    seek $fh, $offset, SEEK_SET;
+}
 
 $/ = \1;  # make readline() read one 1 byte at a time.
 
@@ -68,11 +88,43 @@ sub while_data {
     }
 }
 
-while_data sub {
-    my ($time, $value) = @_;
+if ($heatmap) {
+    my @open;    # [wday][hour]
+    my @total;   # [wday][hour]
+    while_data sub {
+        my ($time, $value) = @_;
+
+        my ($wday, $hour) = (localtime $time)[6, 2];
+        $open[ $wday][$hour]++ if $value;
+        $total[$wday][$hour]++;
+    };
+
     printf(
-        "%s %s\n",
-        strftime("%Y-%m-%d %H:%M", localtime $time),
-        $value ? "open" : "closed",
+        "   " . join("", ($hex ? " %x" : "%3d ") x 25). "\n",
+        ($hex ? (0..11, 0..11, 0) : 0..24)
     );
-};
+    for my $wday (1, 2, 3, 4, 5, 6, 0) {
+        printf(
+            "%3s: " . join(" ", ($hex ? "%x" : "%3d") x 24) . "\n",
+            (qw(Sun Mon Tue Wed Thu Fri Sat))[$wday],
+            map {
+                $open[$wday][$_]
+                ? round($open[$wday][$_] / $total[$wday][$_] * ($hex ? 10 : 100))
+                : 0
+            } 0..23
+        );
+    }
+} else {
+    printf(
+        "Logging since %s.\n",
+        strftime("%Y-%m-%d %H:%M:%S", localtime $start_time),
+    );
+    while_data sub {
+        my ($time, $value) = @_;
+        printf(
+            "%s %s\n",
+            strftime("%Y-%m-%d %H:%M", localtime $time),
+            $value ? "open" : "closed",
+        );
+    };
+}
