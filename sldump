@@ -11,7 +11,7 @@ GetOptions(
     "all"       => \my $all,
     "days=i"    => \my $days,
     "heatmap"   => \my $heatmap,
-    "hex"       => \my $hex,
+    "hex!"      => \my $hex,
     "unknown=s" => \(my $unknown_mode = "ignore"),
 ) or die $usage;
 
