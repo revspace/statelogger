@@ -5,7 +5,7 @@ use Fcntl qw(SEEK_SET);
 use POSIX qw(strftime round ceil);
 use Getopt::Long;
 
-my $usage = "Usage: $0 [--all|--heatmap [--[no]hex]] [--unknown=ignore|open|closed|past|future] [--days=n|--period=yyyy[-mm]]\n";
+my $usage = "Usage: $0 [--all|--heatmap [--[no]hex] [--[no]color]] [--unknown=ignore|open|closed|past|future] [--days=n|--period=yyyy[-mm]]\n";
 
 GetOptions(
     "all"       => \my $all,
@@ -13,11 +13,13 @@ GetOptions(
     "period=s"  => \my $period,
     "heatmap"   => \my $heatmap,
     "hex!"      => \my $hex,
+    "color!"    => \my $color,
     "unknown=s" => \(my $unknown_mode = "ignore"),
 ) or die $usage;
 
 die $usage if $all and $heatmap;
 die $usage if $hex and not $heatmap;
+die $usage if $color and not $heatmap;
 die $usage if $days and $period;
 die $usage if $period and $period !~ /^\d\d\d\d(?:-\d\d)?$/;
 
@@ -25,8 +27,19 @@ if ($heatmap and not defined $hex) {
     my ($rows, $columns) = split " ", `stty size 2>/dev/null`;
     $hex = $columns < 102 if $columns;
 }
+if ($heatmap and not defined $color) {
+    $color = -t STDOUT;
+}
 
 my $edges = $heatmap ? 0 : !$all;
+
+sub color {
+    my ($pct) = @_;
+    my $bg = 232 + round($pct / 100 * 23);
+    my $fg = $bg < 239 ? 242 : 0;
+    return "\e[48;5;${bg}m\e[38;5;${fg}m";
+}
+
 
 my $fn = "/var/statelog";
 my $header_length = 8;
@@ -130,16 +143,23 @@ if ($heatmap) {
         ($hex ? (0..11, 0..11, 0) : 0..24)
     );
     for my $wday (1, 2, 3, 4, 5, 6, 0) {
+        my @pct = map {
+            $open[$wday][$_]
+            ? round($open[$wday][$_] / $total[$wday][$_] * 100)
+            : 0
+        } 0..23;
+
         printf(
-            "%3s: " . join(" ", ($hex ? "%x" : "%3d") x 24) . "\n",
+            "%3s: " . join(" ", ($hex ? "%s%x" : "%s%3d") x 24) . "%s\n",
             (qw(Sun Mon Tue Wed Thu Fri Sat))[$wday],
-            map {
-                $open[$wday][$_]
-                ? round($open[$wday][$_] / $total[$wday][$_] * ($hex ? 10 : 100))
-                : 0
-            } 0..23
+            (map {
+                ($color ? color($_) : ""),
+                ($hex ? round($_ / 10) : $_),
+            } @pct),
+            ($color ? "\e[0m" : ""),
         );
     }
+    print "\n";
 } else {
     printf(
         "Logging since %s.\n",
