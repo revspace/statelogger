@@ -53,10 +53,10 @@ sub while_data {
     my ($callback) = @_;
 
     my $last_known = undef;
-    while (defined (my $value = readline $fh)) {
+    while (defined(my $value = readline $fh)) {
         my $count = 1;
 
-        if ($value !~ /[01]/) {
+        if ($value ne "0" and $value ne "1") {
             if ($unknown_mode eq 'ignore') {
                 $value = undef;
             } elsif ($unknown_mode eq 'open') {
@@ -66,9 +66,9 @@ sub while_data {
             } elsif ($unknown_mode eq 'past') {
                 $value = $last_known;
             } elsif ($unknown_mode eq 'future') {
-                LOOKAHEAD: while (defined ($value = readline $fh)) {
+                LOOKAHEAD: while (defined($value = readline $fh)) {
                     $count++;
-                    last LOOKAHEAD if $value =~ /[01]/;
+                    last LOOKAHEAD if $value eq "0" or $value eq "1";
                 }
             } else {
                 die "Unsupported mode '$unknown_mode'";
