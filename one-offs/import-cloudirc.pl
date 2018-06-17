@@ -21,7 +21,7 @@ my $line = readline STDIN;
 
 print pack "q", $start_time;
 
-for (my $minute = 1445252250; $minute < time(); $minute += 60) {
+for (my $minute = $start_time; $minute < time(); $minute += 60) {
     my ($target) = $line =~ /^\[(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\]/ or die "l=$line";
     my ($newstate) = $line =~ /RevSpace (open|dicht)/ or die "l2=$line";
     my $now = strftime("%Y-%m-%d %H:%M:%S", localtime $minute);
