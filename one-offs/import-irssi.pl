@@ -30,17 +30,20 @@ sub read_one {
     return $target, $newstate;
 }
 
-print pack "q", $start_time;
-
 my ($target, $newstate) = read_one;
 
-for (my $minute = $start_time; $minute < time(); $minute += 60) {
-    my $now = strftime("%Y-%m-%d %H:%M", localtime $minute);
+for (my $unixtime = $start_time; $unixtime < time(); $unixtime += 60) {
+    my $now = strftime("%Y-%m-%d %H:%M", localtime $unixtime);
 
     if ($now ge $target) {
         $state = $newstate;
-        ($target, $newstate) = read_one while $now ge $target;
+        my $oldtarget = $target;
+        while ($now ge $target) {
+            ($target, $newstate) = read_one;
+            $state = $newstate if $target eq $oldtarget;  # same timestamp, use last value
+        }
+
+        print "$unixtime ", (defined $state ? ($state eq "open" ? 1 : 0) : "?"), "\n";
     }
-    print defined $state ? ($state eq "open" ? 1 : 0) : "?";
 }
 
