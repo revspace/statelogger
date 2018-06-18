@@ -5,7 +5,51 @@ use Fcntl qw(SEEK_SET);
 use POSIX qw(strftime round ceil);
 use Getopt::Long;
 
-my $usage = "Usage: $0 [--all|--heatmap [--[no]hex] [--[no]color]] [--unknown=ignore|open|closed|past|future] [--days=n|--period=yyyy[-mm]]\n";
+sub color {
+    my ($pct) = @_;
+    my $bg = 232 + round($pct / 100 * 23);
+    my $fg = $bg < 239 ? 242 : 0;
+    return "\e[48;5;${bg}m\e[38;5;${fg}m";
+}
+
+sub isodt {
+    my ($unixtime) = @_;
+    return strftime "%Y-%m-%d %H:%M", localtime$unixtime;
+}
+
+sub unixtime {
+    my ($year, $month, $day) = @_;
+    $day ||= 1;
+    return strftime "%s", 0, 0, 0, $day, $month - 1, $year - 1900;
+}
+
+sub heatmap {
+    my @open;    # [wday][hour]
+    my @total;   # [wday][hour]
+    while_data(sub {
+        my ($time, $value) = @_;
+
+        my ($wday, $hour) = (localtime $time)[6, 2];
+        $open[ $wday][$hour]++ if $value;
+        $total[$wday][$hour]++;
+    });
+
+    return map {
+        my $wday = $_;
+        [ map {
+            $open[$wday][$_]
+            ? round($open[$wday][$_] / $total[$wday][$_] * 100)
+            : 0
+        } 0..23 ]
+    } 0 .. 6;
+}
+
+my $usage = <<"END";
+Usage: $0 [--logfile=path]
+    [--all|--heatmap [--[no]hex] [--[no]color]]
+    [--days=n|--period=yyyy[-mm]]
+    [--unknown=ignore|open|closed|past|future]
+END
 
 GetOptions(
     "all"       => \my $all,
@@ -14,9 +58,11 @@ GetOptions(
     "heatmap"   => \my $heatmap,
     "hex!"      => \my $hex,
     "color!"    => \my $color,
+    "logfile"   => \(my $fn = "/var/statelog"),
     "unknown=s" => \(my $unknown_mode = "ignore"),
 ) or die $usage;
 
+die $usage if @ARGV;
 die $usage if $all and $heatmap;
 die $usage if $hex and not $heatmap;
 die $usage if $color and not $heatmap;
@@ -33,15 +79,6 @@ if ($heatmap and not defined $color) {
 
 my $edges = $heatmap ? 0 : !$all;
 
-sub color {
-    my ($pct) = @_;
-    my $bg = 232 + round($pct / 100 * 23);
-    my $fg = $bg < 239 ? 242 : 0;
-    return "\e[48;5;${bg}m\e[38;5;${fg}m";
-}
-
-
-my $fn = "/var/statelog";
 my $header_length = 8;
 
 open my $fh, "< :raw", $fn;
@@ -57,35 +94,31 @@ if ($days) {
     die sprintf "Only %d days available.\n", int((time() - $start_time) / 86400)
         if $first_time < $start_time;
     $offset += int(($first_time - $start_time) / 60);
-    
-    printf "[%s - now]\n", strftime("%Y-%m-%d %H:%M:%S", localtime $first_time);
+
+    printf "[%s - now]\n", isodt($first_time);
 } elsif ($period) {
-    my ($yyyy, $mm) = split /-/, $period;
-    my $month = !!$mm;  # month or year
-    $mm ||= 1;
-    my $first_time = strftime "%s", 0, 0, 0, 1, $mm - 1, $yyyy - 1900;
+    my ($year, $month) = split /-/, $period;
+    my $whole_year = !$month;
+    $month ||= 1;
+
+    my $first_time = unixtime($year, $month);
 
     if ($first_time < $start_time) {
-        my $start = strftime("%Y-%m-%d %H:%M:%S", localtime $start_time);
+        my $start = isodt($start_time);
+        $start =~ /^$period/ or die "No data before $start.\n";
 
-        if ($start =~ /^$period/) {
-            $first_time = $start_time;
-        } else {
-            die sprintf("%s not available; logging since %s.\n", $period, $start);
-        }
+        $first_time = $start_time;
     }
 
-    for (1 .. ($month ? 1 : 12)) {
-        $mm++;
-        $yyyy++, $mm = 1 if $mm > 12;
+    for (1 .. ($whole_year ? 12 : 1)) {
+        $month++;
+        $year++, $month = 1 if $month > 12;
     }
-    $last_time = -1 + strftime "%s", 0, 0, 0, 1, $mm - 1, $yyyy - 1900;
+    $last_time = unixtime($year, $month) - 1;
 
     $offset += ceil(($first_time - $start_time) / 60);
 
-    printf "[%s - %s]\n",
-        strftime("%Y-%m-%d %H:%M:%S", localtime $first_time),
-        strftime("%Y-%m-%d %H:%M:%S", localtime $last_time);
+    printf "[%s - %s]\n", isodt($first_time), isodt($last_time);
 }
 
 seek $fh, $offset, SEEK_SET;
@@ -133,49 +166,28 @@ sub while_data {
 }
 
 if ($heatmap) {
-    my @open;    # [wday][hour]
-    my @total;   # [wday][hour]
-    while_data sub {
-        my ($time, $value) = @_;
-
-        my ($wday, $hour) = (localtime $time)[6, 2];
-        $open[ $wday][$hour]++ if $value;
-        $total[$wday][$hour]++;
-    };
+    my @heatmap = heatmap();
 
     printf(
         "   " . join("", ($hex ? " %x" : "%3d ") x 25). "\n",
         ($hex ? (0..11, 0..11, 0) : 0..24)
     );
-    for my $wday (1, 2, 3, 4, 5, 6, 0) {
-        my @pct = map {
-            $open[$wday][$_]
-            ? round($open[$wday][$_] / $total[$wday][$_] * 100)
-            : 0
-        } 0..23;
 
+    for my $wday (1, 2, 3, 4, 5, 6, 0) {
         printf(
             "%3s: " . join(" ", ($hex ? "%s%x" : "%s%3d") x 24) . "%s\n",
             (qw(Sun Mon Tue Wed Thu Fri Sat))[$wday],
             (map {
                 ($color ? color($_) : ""),
                 ($hex ? round($_ / 10) : $_),
-            } @pct),
+            } @{ $heatmap[$wday] }),
             ($color ? "\e[0m" : ""),
         );
     }
     print "\n";
 } else {
-    printf(
-        "Logging since %s.\n",
-        strftime("%Y-%m-%d %H:%M:%S", localtime $start_time),
-    );
     while_data sub {
         my ($time, $value) = @_;
-        printf(
-            "%s %s\n",
-            strftime("%Y-%m-%d %H:%M", localtime $time),
-            $value ? "open" : "closed",
-        );
+        printf "%s %s\n", isodt($time), ($value ? "open" : "closed");
     };
 }
