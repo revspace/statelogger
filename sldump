@@ -5,6 +5,9 @@ use Fcntl qw(SEEK_SET);
 use POSIX qw(strftime round ceil);
 use Getopt::Long;
 
+# Instruct libc to query /etc/localtime only once instead of all the time.
+$ENV{TZ} = ":/etc/localtime";  # Not portable! (GNU libc only)
+
 sub color {
     my ($pct) = @_;
     my $bg = 232 + round($pct / 100 * 23);
