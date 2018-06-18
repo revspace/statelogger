@@ -65,10 +65,15 @@ if ($days) {
     $mm ||= 1;
     my $first_time = strftime "%s", 0, 0, 0, 1, $mm - 1, $yyyy - 1900;
 
-    die sprintf "%s not available; logging since %s.\n",
-        strftime("%Y-%m-%d %H:%M:%S", localtime $first_time),
-        strftime("%Y-%m-%d %H:%M:%S", localtime $start_time)
-        if $first_time < $start_time;
+    if ($first_time < $start_time) {
+        my $start = strftime("%Y-%m-%d %H:%M:%S", localtime $start_time);
+
+        if ($start =~ /^$period/) {
+            $first_time = $start_time;
+        } else {
+            die sprintf("%s not available; logging since %s.\n", $period, $start);
+        }
+    }
 
     for (1 .. ($month ? 1 : 12)) {
         $mm++;
