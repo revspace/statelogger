@@ -61,7 +61,7 @@ GetOptions(
     "heatmap"   => \my $heatmap,
     "hex!"      => \my $hex,
     "color!"    => \my $color,
-    "logfile"   => \(my $fn = "/var/statelog"),
+    "logfile=s" => \(my $fn = "/var/statelog"),
     "unknown=s" => \(my $unknown_mode = "ignore"),
 ) or die $usage;
 
