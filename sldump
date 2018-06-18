@@ -49,7 +49,7 @@ sub heatmap {
 
 my $usage = <<"END";
 Usage: $0 [--logfile=path]
-    [--all|--heatmap [--[no]hex] [--[no]color]]
+    [--all|--heatmap [--json|[--[no]hex] [--[no]color]]]
     [--days=n|--period=yyyy[-mm]]
     [--unknown=ignore|open|closed|past|future]
 END
@@ -59,6 +59,7 @@ GetOptions(
     "days=i"    => \my $days,
     "period=s"  => \my $period,
     "heatmap"   => \my $heatmap,
+    "json"      => \my $json,
     "hex!"      => \my $hex,
     "color!"    => \my $color,
     "logfile=s" => \(my $fn = "/var/statelog"),
@@ -67,8 +68,10 @@ GetOptions(
 
 die $usage if @ARGV;
 die $usage if $all and $heatmap;
-die $usage if $hex and not $heatmap;
-die $usage if $color and not $heatmap;
+die $usage if defined $hex and not $heatmap;
+die $usage if defined $color and not $heatmap;
+die $usage if $json and not $heatmap;
+die $usage if $json and (defined $color or defined $hex);
 die $usage if $days and $period;
 die $usage if $period and $period !~ /^\d\d\d\d(?:-\d\d)?$/;
 
@@ -91,20 +94,21 @@ $start_time = unpack "q", $start_time;
 my $now = time();
 my $offset = 8;
 my $last_time = undef;
+my $first_time = $start_time;
 
 if ($days) {
-    my $first_time = time() - $days * 86400;
+    $first_time = time() - $days * 86400;
     die sprintf "Only %d days available.\n", int((time() - $start_time) / 86400)
         if $first_time < $start_time;
     $offset += int(($first_time - $start_time) / 60);
 
-    printf "[%s - now]\n", isodt($first_time);
+    printf "[%s - now]\n", isodt($first_time) unless $json;
 } elsif ($period) {
     my ($year, $month) = split /-/, $period;
     my $whole_year = !$month;
     $month ||= 1;
 
-    my $first_time = unixtime($year, $month);
+    $first_time = unixtime($year, $month);
 
     if ($first_time < $start_time) {
         my $start = isodt($start_time);
@@ -121,7 +125,7 @@ if ($days) {
 
     $offset += ceil(($first_time - $start_time) / 60);
 
-    printf "[%s - %s]\n", isodt($first_time), isodt($last_time);
+    printf "[%s - %s]\n", isodt($first_time), isodt($last_time) unless $json;
 }
 
 seek $fh, $offset, SEEK_SET;
@@ -170,6 +174,17 @@ sub while_data {
 
 if ($heatmap) {
     my @heatmap = heatmap();
+
+    if ($json) {
+        require JSON;
+        my $end = $last_time // $^T;
+        print JSON->new->canonical->encode({
+            heatmap => \@heatmap,
+            begin => { unix => $first_time, iso => isodt($first_time) },
+            end   => { unix => $end,        iso => isodt($end) },
+        });
+        exit;
+    }
 
     printf(
         "   " . join("", ($hex ? " %x" : "%3d ") x 25). "\n",
