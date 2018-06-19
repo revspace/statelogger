@@ -7,6 +7,8 @@ o='heatmaps'
 
 [ -e $o ] || mkdir $o
 
+$c > $o/alltime.json &
+
 $c --days   7 >   $o/7days.json
 $c --days  70 >  $o/70days.json
 $c --days 365 > $o/365days.json
@@ -15,4 +17,4 @@ for year in $(seq 2010 $(date +%Y)); do
     $c --period $year > $o/year$year.json
 done
 
-$c > $o/alltime.json
+wait
